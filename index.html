@@ -1,0 +1,1710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVIDIA GPU 21 — PTX & SASS: The Real GPU Instruction Sets</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-card: #0d1117;
+            --bg-code: #161b22;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent: #76B900;
+            --accent-dim: #76B90044;
+            --accent-glow: #76B90033;
+            --border: #21262d;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+            --font-body: 'Inter', sans-serif;
+            --max-width: 900px;
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 17px;
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        /* ── Header ── */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            position: relative;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .hero > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .series-label {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+
+        .hero h1 {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 5vw, 3.2rem);
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.2;
+            margin-bottom: 1rem;
+        }
+
+        .hero h1 .accent {
+            color: var(--accent);
+        }
+
+        .hero .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin-bottom: 2rem;
+        }
+
+        /* ── Tag Pills ── */
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .tag {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            background: var(--accent-dim);
+            white-space: nowrap;
+        }
+
+        /* ── Pipeline Flow Bar ── */
+        .pipeline {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+            margin-bottom: 1rem;
+            max-width: var(--max-width);
+        }
+
+        .pipeline-step {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            padding: 0.3rem 0.7rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .pipeline-arrow {
+            color: var(--accent);
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        /* ── Slides ── */
+        .slide {
+            min-height: 100vh;
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 4rem 1.5rem;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .slide-number {
+            font-family: var(--font-display);
+            font-size: 5rem;
+            font-weight: 700;
+            color: var(--accent-dim);
+            position: absolute;
+            top: 2rem;
+            right: 1.5rem;
+            line-height: 1;
+            user-select: none;
+        }
+
+        .slide h2 {
+            font-family: var(--font-display);
+            font-size: 1.9rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 1.5rem;
+            line-height: 1.25;
+        }
+
+        .slide h3 {
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .slide p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .slide p strong {
+            color: var(--text-primary);
+        }
+
+        .slide ul, .slide ol {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+            color: var(--text-secondary);
+        }
+
+        .slide li {
+            margin-bottom: 0.4rem;
+        }
+
+        .slide li strong {
+            color: var(--text-primary);
+        }
+
+        /* ── Code Blocks ── */
+        .code-block {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin: 1.25rem 0;
+            overflow: hidden;
+        }
+
+        .code-header {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent);
+            background: rgba(118, 185, 0, 0.08);
+            padding: 0.4rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .code-block pre {
+            margin: 0;
+            padding: 1rem;
+            overflow-x: auto;
+        }
+
+        .code-block code {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #c9d1d9;
+        }
+
+        /* Syntax highlighting (manual) */
+        .kw { color: #ff7b72; }
+        .fn { color: #d2a8ff; }
+        .str { color: #a5d6ff; }
+        .cm { color: #8b949e; font-style: italic; }
+        .num { color: #79c0ff; }
+        .type { color: #ffa657; }
+        .dir { color: #ff7b72; }
+        .mac { color: #ffa657; }
+
+        /* ── Tables ── */
+        .table-wrap {
+            overflow-x: auto;
+            margin: 1.25rem 0;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background: var(--bg-code);
+            color: var(--accent);
+            font-weight: 600;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-display);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:nth-child(even) td {
+            background: rgba(13, 17, 23, 0.5);
+        }
+
+        /* ── Diagrams ── */
+        .diagram-flow {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .diagram-box {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .diagram-box.accent {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(118, 185, 0, 0.08);
+        }
+
+        .diagram-box.dim {
+            color: var(--text-secondary);
+            border-color: var(--border);
+        }
+
+        .diagram-arrow {
+            color: var(--accent);
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+
+        /* Vertical flow diagrams */
+        .diagram-vertical {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .diagram-vertical .diagram-arrow {
+            font-size: 1.1rem;
+        }
+
+        /* Nested hierarchy diagram */
+        .hierarchy {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .hierarchy-level {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .hierarchy-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-width: 80px;
+            text-align: right;
+        }
+
+        .hierarchy-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+        }
+
+        .hierarchy-item {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .hierarchy-item.accent {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(118, 185, 0, 0.08);
+        }
+
+        /* Grid diagram */
+        .diagram-grid {
+            display: grid;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .diagram-grid.cols-2 {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .diagram-grid.cols-3 {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+
+        .diagram-panel {
+            padding: 1rem;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        .diagram-panel.accent-border {
+            border-left: 3px solid var(--accent);
+        }
+
+        .diagram-panel h4 {
+            font-family: var(--font-display);
+            font-size: 1rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .diagram-panel p, .diagram-panel ul {
+            font-size: 0.85rem;
+        }
+
+        /* ── Callout Boxes ── */
+        .callout {
+            background: var(--bg-card);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            padding: 1rem 1.25rem;
+            margin: 1.25rem 0;
+        }
+
+        .callout p {
+            margin-bottom: 0;
+        }
+
+        .callout .callout-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.3rem;
+        }
+
+        /* ── Tier Visual ── */
+        .tier-visual {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .tier-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .tier-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-width: 90px;
+            text-align: right;
+        }
+
+        .tier-fill {
+            height: 32px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            padding: 0 0.75rem;
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            white-space: nowrap;
+            transition: width 0.6s ease;
+        }
+
+        .tier-cost {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            min-width: 70px;
+        }
+
+        /* ── Contents list ── */
+        .contents-list {
+            list-style: none;
+            padding-left: 0;
+            counter-reset: contents;
+        }
+
+        .contents-list li {
+            counter-increment: contents;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .contents-list li:last-child {
+            border-bottom: none;
+        }
+
+        .contents-list li::before {
+            content: counter(contents, decimal-leading-zero);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            min-width: 2rem;
+        }
+
+        .contents-list a {
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .contents-list a:hover {
+            color: var(--accent);
+        }
+
+        /* ── Footer ── */
+        .footer {
+            text-align: center;
+            padding: 3rem 1.5rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            max-width: var(--max-width);
+            margin: 0 auto;
+        }
+
+        .footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 640px) {
+            .slide {
+                padding: 3rem 1rem;
+                min-height: auto;
+            }
+
+            .slide-number {
+                font-size: 3rem;
+                top: 1.5rem;
+                right: 1rem;
+            }
+
+            .slide h2 {
+                font-size: 1.5rem;
+            }
+
+            .diagram-grid.cols-2,
+            .diagram-grid.cols-3 {
+                grid-template-columns: 1fr;
+            }
+
+            .pipeline {
+                gap: 0.15rem;
+            }
+
+            .pipeline-step {
+                font-size: 0.6rem;
+                padding: 0.2rem 0.4rem;
+            }
+
+            .hero h1 {
+                font-size: 1.8rem;
+            }
+
+            table {
+                font-size: 0.78rem;
+            }
+
+            .tier-label {
+                min-width: 60px;
+                font-size: 0.65rem;
+            }
+
+            .tier-fill {
+                font-size: 0.6rem;
+                height: 26px;
+            }
+        }
+
+        /* ── Interactive controls (added for Local LLM series) ── */
+        .control-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin: 1.25rem 0;
+        }
+        .control-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .control-row label {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            min-width: 180px;
+        }
+        .control-row input[type="range"] {
+            flex: 1;
+            min-width: 160px;
+            accent-color: var(--accent);
+        }
+        .control-row input[type="number"],
+        .control-row select {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 4px;
+            padding: 0.3rem 0.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+        }
+        .control-row .val {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            min-width: 80px;
+            text-align: right;
+        }
+        .btn {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            padding: 0.4rem 0.9rem;
+            background: var(--accent-dim);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .btn:hover { background: rgba(118, 185, 0, 0.2); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn.secondary {
+            background: var(--bg-code);
+            color: var(--text-secondary);
+            border-color: var(--border);
+        }
+        .result-box {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 4px;
+            padding: 0.75rem 1rem;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            margin-top: 0.75rem;
+        }
+        .result-box .line-label { color: var(--text-secondary); }
+        .result-box .line-val   { color: var(--accent); font-weight: 600; }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+        .metric {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.6rem 0.8rem;
+            text-align: center;
+        }
+        .metric .metric-label {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .metric .metric-value {
+            font-family: var(--font-display);
+            font-size: 1.25rem;
+            color: var(--accent);
+            font-weight: 600;
+            margin-top: 0.2rem;
+        }
+
+        /* Canvas / SVG containers */
+        .canvas-wrap {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1.25rem 0;
+            overflow-x: auto;
+        }
+        .canvas-wrap canvas,
+        .canvas-wrap svg {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+        }
+
+        /* Small inline badge */
+        .badge {
+            display: inline-block;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            padding: 0.1rem 0.45rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            vertical-align: middle;
+            margin-left: 0.3rem;
+        }
+        .badge.ok    { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+        .badge.warn  { border-color: #ffa657; color: #ffa657; background: rgba(255,166,87,0.08); }
+        .badge.bad   { border-color: #ff7b72; color: #ff7b72; background: rgba(255,123,114,0.08); }
+
+    </style>
+</head>
+<body>
+
+<header class="hero">
+    <div class="series-label">NVIDIA GPU Architectures Series — Presentation 21</div>
+    <h1><span class="accent">PTX &amp; SASS</span> &mdash; The Real GPU Instruction Sets</h1>
+    <p class="subtitle">C++/CUDA &rarr; PTX (NVIDIA's portable IR) &rarr; SASS (the actual machine code that runs on the SM). Walk through both ISAs &mdash; instruction families, the FFMA/HMMA/WGMMA tensor-core instructions, LDMATRIX/STMATRIX, BAR.SYNC, predication &mdash; and how to read SASS to understand what the compiler did to your kernel.</p>
+
+    <div class="tags">
+        <span class="tag">PTX</span><span class="tag">SASS</span><span class="tag">FFMA</span>
+        <span class="tag">HMMA</span><span class="tag">WGMMA</span><span class="tag">MMA</span>
+        <span class="tag">LDMATRIX</span><span class="tag">BAR.SYNC</span>
+        <span class="tag">Predication</span><span class="tag">ptxas</span>
+        <span class="tag">nvdisasm</span><span class="tag">cuobjdump</span>
+    </div>
+
+    <div class="pipeline">
+        <span class="pipeline-step">CUDA</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">PTX</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">ptxas</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">SASS</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">SM</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Performance</span>
+    </div>
+</header>
+
+<section class="slide" id="slide-00">
+    <div class="slide-number">00</div>
+    <h2>Topics We'll Cover</h2>
+    <p>Two ISAs, one toolchain. PTX is the portable IR you write or that <code>nvcc</code> emits; SASS is the per-architecture machine code that actually executes on the streaming multiprocessor. Reading either one tells you what the compiler really did with your kernel.</p>
+    <ul class="contents-list">
+        <li><a href="#slide-01">Three Layers of GPU Code</a></li>
+        <li><a href="#slide-02">PTX &mdash; The Portable IR</a></li>
+        <li><a href="#slide-03">SASS &mdash; The Actual Machine Code</a></li>
+        <li><a href="#slide-04">The Three Tensor-Core Instructions</a></li>
+        <li><a href="#slide-05">LDMATRIX / STMATRIX &amp; The Tile-Loading Pipeline</a></li>
+        <li><a href="#slide-06">Synchronisation in PTX</a></li>
+        <li><a href="#slide-07">Predication &amp; Branching</a></li>
+        <li><a href="#slide-08">Reading SASS &mdash; A Worked Example</a></li>
+        <li><a href="#slide-09">The HMMA / WGMMA Compilation Path</a></li>
+        <li><a href="#slide-10">ptxas Optimisations &amp; Diagnostics</a></li>
+        <li><a href="#slide-11">Interactive: SASS Decoder</a></li>
+    </ul>
+</section>
+
+<section class="slide" id="slide-01">
+    <div class="slide-number">01</div>
+    <h2>Three Layers of GPU Code</h2>
+    <p>Between the CUDA C++ you write and the silicon that runs it sit two intermediate forms. PTX is a portable text IR; SASS is the binary machine code per architecture. The boundary between them is <code>ptxas</code>, NVIDIA's optimising assembler.</p>
+
+    <div class="canvas-wrap">
+        <svg viewBox="0 0 760 480" width="760" height="480" xmlns="http://www.w3.org/2000/svg">
+            <style>
+                .nodeBox  { fill: #161b22; stroke: #21262d; }
+                .nodeBoxA { fill: rgba(118,185,0,0.08); stroke: #76B900; }
+                .toolBox  { fill: rgba(255,166,87,0.08); stroke: #ffa657; }
+                .lblH { fill: #76B900; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 13px; }
+                .lblB { fill: #e6edf3; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+                .lblS { fill: #8b949e; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+                .lblT { fill: #ffa657; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+                .arr  { stroke: #76B900; stroke-width: 2; fill: none; }
+                .arrT { stroke: #ffa657; stroke-width: 1.5; fill: none; stroke-dasharray: 4 3; }
+            </style>
+
+            <!-- Source layer -->
+            <rect x="120" y="20" width="520" height="60" rx="8" class="nodeBoxA"/>
+            <text x="380" y="42" class="lblH" text-anchor="middle">Source</text>
+            <text x="380" y="62" class="lblB" text-anchor="middle">CUDA C++  /  Triton DSL  /  PyTorch graphs (compiled via Inductor)</text>
+
+            <path d="M380 80 L380 110" class="arr"/>
+            <polygon points="375,108 385,108 380,118" fill="#76B900"/>
+
+            <!-- Front-end compiler -->
+            <rect x="180" y="120" width="400" height="50" rx="8" class="toolBox"/>
+            <text x="380" y="141" class="lblT" text-anchor="middle">Front-end compiler</text>
+            <text x="380" y="158" class="lblS" text-anchor="middle">nvcc  /  clang++ --cuda  /  Triton  &mdash;  emits PTX</text>
+
+            <path d="M380 170 L380 200" class="arr"/>
+            <polygon points="375,198 385,198 380,208" fill="#76B900"/>
+
+            <!-- PTX -->
+            <rect x="120" y="210" width="520" height="70" rx="8" class="nodeBoxA"/>
+            <text x="380" y="232" class="lblH" text-anchor="middle">PTX &mdash; virtual ISA</text>
+            <text x="380" y="252" class="lblB" text-anchor="middle">infinite virtual registers, statically typed, ASCII text</text>
+            <text x="380" y="270" class="lblS" text-anchor="middle">.version 8.3   .target sm_90   .address_size 64</text>
+
+            <path d="M380 280 L380 310" class="arr"/>
+            <polygon points="375,308 385,308 380,318" fill="#76B900"/>
+
+            <!-- ptxas -->
+            <rect x="180" y="320" width="400" height="50" rx="8" class="toolBox"/>
+            <text x="380" y="341" class="lblT" text-anchor="middle">ptxas (CUDA optimising assembler)</text>
+            <text x="380" y="358" class="lblS" text-anchor="middle">register allocation, scheduling, peephole &rarr; SASS</text>
+
+            <path d="M380 370 L380 400" class="arr"/>
+            <polygon points="375,398 385,398 380,408" fill="#76B900"/>
+
+            <!-- SASS / cubin -->
+            <rect x="120" y="410" width="520" height="60" rx="8" class="nodeBoxA"/>
+            <text x="380" y="432" class="lblH" text-anchor="middle">SASS &mdash; per-architecture machine code (in cubin ELF)</text>
+            <text x="380" y="452" class="lblB" text-anchor="middle">cuobjdump --dump-sass kernel.cubin   |   nvdisasm kernel.cubin</text>
+
+            <!-- Side annotation -->
+            <text x="660" y="245" class="lblS">forward</text>
+            <text x="660" y="258" class="lblS">compatible</text>
+            <text x="660" y="445" class="lblS">per-arch</text>
+            <text x="660" y="458" class="lblS">binary</text>
+        </svg>
+    </div>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>PTX is portable</h4>
+            <p>One PTX file targets a logical architecture (<code>sm_90</code>). At runtime, if the host driver finds no embedded SASS for the present GPU, it JITs PTX on the fly. That's how a binary built today runs on a future GPU class.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>SASS is per-arch</h4>
+            <p>Encoded for a specific compute capability. <code>sm_75</code> SASS will not run on Hopper; <code>sm_90</code> SASS will not run on Turing. Fat binaries embed several SASS blobs plus a PTX fallback.</p>
+        </div>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">Inspecting a fat binary</div>
+        <p><code>cuobjdump --dump-elf-symbols my_app</code> lists every embedded SASS blob and the PTX fallback. <code>cuobjdump --list-text</code> is shorter; <code>cuobjdump --dump-sass --gpu-architecture=sm_90 my_app</code> prints just the Hopper SASS.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-02">
+    <div class="slide-number">02</div>
+    <h2>PTX &mdash; The Portable IR</h2>
+    <p>PTX (Parallel Thread eXecution) is NVIDIA's published, stable, ASCII-text intermediate representation. It looks like a typed assembly. It's the only ISA NVIDIA fully documents &mdash; the <em>PTX ISA Reference</em> is the official contract between compiler authors and the driver.</p>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Static typing</h4>
+            <p>Every instruction names its operand type. <code>.s32</code>, <code>.u64</code>, <code>.f16</code>, <code>.f16x2</code>, <code>.bf16</code>, <code>.b128</code>. Mismatched types are a PTX-level error, not a runtime crash.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>State spaces</h4>
+            <p><code>.reg</code> (virtual registers), <code>.local</code> (per-thread stack), <code>.shared</code> (per-block scratchpad), <code>.global</code> (DRAM), <code>.const</code>, <code>.param</code>, <code>.tex</code>. Every load and store is tagged with its address space.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>SSA-like virtual regs</h4>
+            <p>Each <code>.reg</code> result is a fresh symbolic name. <code>ptxas</code> does the real register allocation later. PTX itself has no notion of "R7" &mdash; that's a SASS thing.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Instruction families</h4>
+            <p><code>add</code>, <code>mul</code>, <code>mad</code>, <code>fma</code>, <code>ld</code>, <code>st</code>, <code>cvt</code>, <code>setp</code>, <code>selp</code>, <code>bra</code>, <code>bar.sync</code>, <code>mma.sync</code>, <code>wgmma.mma_async.sync</code>, <code>cp.async</code>. Modifiers (<code>.lo</code>, <code>.hi</code>, <code>.sat</code>, <code>.rn</code>) tune behaviour.</p>
+        </div>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">PTX &mdash; 32-thread block reduction (sum), hand-written</div>
+<pre><code><span class="dir">.version</span> 8.3
+<span class="dir">.target</span>  sm_90
+<span class="dir">.address_size</span> 64
+
+<span class="dir">.visible</span> <span class="dir">.entry</span> <span class="fn">block_reduce</span>(
+    <span class="dir">.param</span> <span class="type">.u64</span> in_ptr,
+    <span class="dir">.param</span> <span class="type">.u64</span> out_ptr )
+{
+    <span class="dir">.reg</span> <span class="type">.b64</span>  %rd&lt;4&gt;;
+    <span class="dir">.reg</span> <span class="type">.b32</span>  %r&lt;8&gt;;
+    <span class="dir">.reg</span> <span class="type">.f32</span>  %f&lt;6&gt;;
+    <span class="dir">.reg</span> <span class="type">.pred</span> %p&lt;3&gt;;
+    <span class="dir">.shared</span> <span class="dir">.align</span> 4 <span class="type">.b8</span> sdata[128];   <span class="cm">// 32 floats</span>
+
+    <span class="kw">ld.param.u64</span>   %rd1, [in_ptr];
+    <span class="kw">cvta.to.global.u64</span> %rd1, %rd1;
+    <span class="kw">mov.u32</span>        %r1, %tid.x;
+    <span class="kw">mul.wide.u32</span>   %rd2, %r1, 4;
+    <span class="kw">add.s64</span>        %rd2, %rd1, %rd2;
+    <span class="kw">ld.global.f32</span>  %f1, [%rd2];          <span class="cm">// my element</span>
+
+    <span class="kw">st.shared.f32</span>  [sdata + %r1*4], %f1;
+    <span class="kw">bar.sync</span>       0;                    <span class="cm">// __syncthreads()</span>
+
+    <span class="cm">// log-step reduction, stride 16, 8, 4, 2, 1</span>
+    <span class="kw">mov.u32</span>        %r2, 16;
+<span class="fn">$LOOP:</span>
+    <span class="kw">setp.lt.u32</span>    %p1, %r1, %r2;
+    <span class="kw">@!</span>%p1 <span class="kw">bra</span>      $SKIP;
+    <span class="kw">add.s32</span>        %r3, %r1, %r2;
+    <span class="kw">ld.shared.f32</span>  %f2, [sdata + %r1*4];
+    <span class="kw">ld.shared.f32</span>  %f3, [sdata + %r3*4];
+    <span class="kw">add.f32</span>        %f2, %f2, %f3;
+    <span class="kw">st.shared.f32</span>  [sdata + %r1*4], %f2;
+<span class="fn">$SKIP:</span>
+    <span class="kw">bar.sync</span>       0;
+    <span class="kw">shr.u32</span>        %r2, %r2, 1;
+    <span class="kw">setp.ne.u32</span>    %p2, %r2, 0;
+    <span class="kw">@</span>%p2 <span class="kw">bra</span>       $LOOP;
+
+    <span class="kw">setp.ne.u32</span>    %p1, %r1, 0;
+    <span class="kw">@</span>%p1 <span class="kw">bra</span>       $DONE;
+    <span class="kw">ld.param.u64</span>   %rd3, [out_ptr];
+    <span class="kw">cvta.to.global.u64</span> %rd3, %rd3;
+    <span class="kw">ld.shared.f32</span>  %f4, [sdata];
+    <span class="kw">st.global.f32</span>  [%rd3], %f4;
+<span class="fn">$DONE:</span>
+    <span class="kw">ret</span>;
+}
+</code></pre>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">Why PTX exists at all</div>
+        <p>NVIDIA refuses to commit SASS to a stable encoding &mdash; they want the freedom to change it every generation. PTX gives compiler vendors (LLVM, Triton, JAX, Mojo) a stable target while preserving NVIDIA's ability to redesign the SM. It's the same idea as JVM bytecode, only tuned for a SIMT machine.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-03">
+    <div class="slide-number">03</div>
+    <h2>SASS &mdash; The Actual Machine Code</h2>
+    <p>SASS (Streaming ASSembler, sometimes <em>Source ASSembly</em>) is the per-architecture binary that runs on the SM. Each generation has its own encoding, its own instruction list, and its own quirks. <strong>NVIDIA does not publish a complete SASS reference.</strong> What we know comes from years of community reverse engineering.</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Arch</th><th>SM</th><th>Notable SASS additions</th></tr></thead>
+            <tbody>
+                <tr><td>Volta</td><td>sm_70</td><td>First HMMA (8.8.4 FP16); independent thread scheduling.</td></tr>
+                <tr><td>Turing</td><td>sm_75</td><td>HMMA INT8/INT4; uniform datapath (URF, UR registers).</td></tr>
+                <tr><td>Ampere</td><td>sm_80 / sm_86</td><td>HMMA 16.8.16 BF16/TF32; LDGSTS (cp.async); LDMATRIX.</td></tr>
+                <tr><td>Ada Lovelace</td><td>sm_89</td><td>FP8 HMMA on tensor cores; otherwise same SASS family as Ampere.</td></tr>
+                <tr><td>Hopper</td><td>sm_90</td><td>WGMMA (warp-group async MMA); STMATRIX; UTMALDG/UTMASTG (TMA).</td></tr>
+                <tr><td>Blackwell</td><td>sm_100 / sm_120</td><td>FP4/FP6 MMA; second-gen TMA; new clusters/DSMEM ops.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Tools</h4>
+            <p><code>cuobjdump --dump-sass</code> on a cubin or fat binary; <code>nvdisasm kernel.cubin</code> for richer output (control-flow graph with <code>-cfg</code>, scheduling info with <code>-c</code>).</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Format</h4>
+            <p><code>OP[.modifier] dest, src1, src2 ;</code> &mdash; left-to-right destination first. Most ops take 3 register sources; a few take immediates or constant-bank refs <code>c[0x0][0x28]</code>.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Predicates</h4>
+            <p><code>@P0 ADD ...</code> runs only on threads where P0 is true. <code>@!P0</code> is the negation. <code>@PT</code> means "always" (PT is hard-wired true). Every SASS line has an implicit predicate.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Reverse engineering</h4>
+            <p>Community projects: <strong>Maxas</strong> (Maxwell), <strong>NervanaSys</strong>, <strong>CuAssembler</strong> (Volta&rarr;Hopper). Used to extract instruction encodings, latency tables, and schedule-control bits.</p>
+        </div>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">SASS &mdash; vector add c[i] = a[i] + b[i] (sm_90, snippet)</div>
+<pre><code><span class="cm">// CUDA: __global__ void add(float* a, float* b, float* c) {</span>
+<span class="cm">//          int i = threadIdx.x; c[i] = a[i] + b[i];</span>
+<span class="cm">//       }</span>
+
+      <span class="fn">MOV</span>    R1, c[0x0][0x28] ;        <span class="cm">// stack base</span>
+      <span class="fn">S2R</span>    R0, SR_TID.X ;            <span class="cm">// threadIdx.x</span>
+      <span class="fn">ULDC.64</span> UR4, c[0x0][0x208] ;    <span class="cm">// pointer a (uniform)</span>
+      <span class="fn">IMAD.WIDE</span> R2, R0, 0x4, UR4 ;   <span class="cm">// &amp;a[i] (64-bit)</span>
+      <span class="fn">LDG.E</span>  R5, [R2.64] ;             <span class="cm">// a[i]</span>
+      <span class="fn">LDG.E</span>  R7, [R2.64+0x800000] ;    <span class="cm">// b[i]   (relative)</span>
+      <span class="fn">FADD</span>   R5, R5, R7 ;
+      <span class="fn">STG.E</span>  [R2.64+0x1000000], R5 ;
+@PT   <span class="fn">EXIT</span> ;
+</code></pre>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">Read it like a regs-and-memory CPU</div>
+        <p>SASS is a 3-operand RISC-ish ISA with predication, fixed 32-thread warps and constant-memory operands. If you can read ARM or RISC-V assembly, you can read SASS &mdash; the unfamiliar bits are the address-space modifiers (<code>.E</code> = generic-address load) and the constant banks (<code>c[0x0][..]</code>).</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-04">
+    <div class="slide-number">04</div>
+    <h2>The Three Tensor-Core Instructions</h2>
+    <p>Underneath all the high-level matmul libraries (cuBLAS, cuDNN, CUTLASS, TRT-LLM) sit three families of tensor-core instructions. Knowing which one you're emitting tells you exactly what hardware path your kernel uses.</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Family</th><th>Generations</th><th>Shapes (M.N.K)</th><th>Operand types</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>HMMA</strong></td><td>Volta &rarr; Ampere &rarr; Ada</td><td>8.8.4, 16.8.8, 16.8.16</td><td>FP16, BF16, TF32, FP8 (Ada)</td><td>Hardware MMA. Sync, warp-scoped.</td></tr>
+                <tr><td><strong>WGMMA</strong></td><td>Hopper (sm_90+)</td><td>64.N.16, N &le; 256</td><td>FP8 (E4M3/E5M2), BF16, TF32, FP16</td><td>Warp-group async MMA. Operands in shared memory.</td></tr>
+                <tr><td><strong>WMMA</strong></td><td>C++/PTX abstraction</td><td>maps to HMMA</td><td>same as HMMA</td><td>Frontend wrapper; not a SASS opcode.</td></tr>
+                <tr><td><strong>IMMA</strong></td><td>Turing &rarr; Hopper</td><td>8.8.16, 16.8.32</td><td>INT8, INT4 (Turing/Ampere)</td><td>Integer tensor-core MMA.</td></tr>
+                <tr><td><strong>BMMA</strong></td><td>Turing &rarr; Ampere</td><td>8.8.128</td><td>1-bit operands</td><td>Binary MMA; XNOR + popcount.</td></tr>
+                <tr><td><strong>QGMMA / FP4 MMA</strong></td><td>Blackwell (sm_100+)</td><td>64.N.32 etc.</td><td>FP4 (MX), FP6, FP8</td><td>Doubles tensor-core throughput again.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">Inline PTX &mdash; Hopper WGMMA, BF16 inputs, FP32 accum</div>
+<pre><code><span class="cm">// 64x128 = 64x16 * 16x128 in one async warp-group MMA</span>
+<span class="kw">wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16</span>
+    {%f0, %f1, %f2, %f3, %f4, %f5, %f6, %f7,
+     %f8, %f9, %f10, %f11, %f12, %f13, %f14, %f15,
+     %f16, %f17, %f18, %f19, %f20, %f21, %f22, %f23,
+     %f24, %f25, %f26, %f27, %f28, %f29, %f30, %f31,
+     %f32, %f33, %f34, %f35, %f36, %f37, %f38, %f39,
+     %f40, %f41, %f42, %f43, %f44, %f45, %f46, %f47,
+     %f48, %f49, %f50, %f51, %f52, %f53, %f54, %f55,
+     %f56, %f57, %f58, %f59, %f60, %f61, %f62, %f63},
+    desc_a, desc_b, 1, 1, 1, 0, 0;
+</code></pre>
+    </div>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Token by token</h4>
+            <ul>
+                <li><code>wgmma.mma_async</code> &mdash; warp-group, asynchronous MMA</li>
+                <li><code>.sync.aligned</code> &mdash; all 128 threads of the warp-group must hit it</li>
+                <li><code>.m64n128k16</code> &mdash; tile shape 64&times;128 = 64&times;16 &times; 16&times;128</li>
+                <li><code>.f32.bf16.bf16</code> &mdash; accum / A-input / B-input types</li>
+                <li><code>desc_a, desc_b</code> &mdash; 64-bit shared-memory descriptors (not raw pointers)</li>
+                <li>last 5 ints &mdash; scale-d, scale-a, scale-b, transposeA, transposeB</li>
+            </ul>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Why the descriptors?</h4>
+            <p>WGMMA <em>requires</em> its A and B operands to live in shared memory in a specific swizzled layout. Instead of pointers it takes 64-bit descriptors that encode the base address, the leading-dim stride and the swizzle mode. That's why every Hopper matmul kernel uses LDMATRIX or TMA to set up the tiles first.</p>
+        </div>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">Async = the whole point</div>
+        <p>HMMA on Ampere is synchronous: the warp issues, then waits for the result registers. WGMMA on Hopper is non-blocking &mdash; it runs while the warp keeps doing other work, and you reap the accumulators later with <code>wgmma.commit_group</code> + <code>wgmma.wait_group</code>. That's how Hopper kernels overlap MMA with TMA loads.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-05">
+    <div class="slide-number">05</div>
+    <h2>LDMATRIX / STMATRIX &amp; The Tile-Loading Pipeline</h2>
+    <p>Tensor cores need their inputs in a very specific register layout: each thread holds two or four FP16 values from a non-obvious slice of the tile. Doing that by hand &mdash; element-by-element &mdash; cost as much as the matmul itself. <code>ldmatrix</code> fixes this.</p>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>ldmatrix (Ampere+)</h4>
+            <p><code>ldmatrix.sync.aligned.m8n8.x4.shared.b16</code> loads <strong>four</strong> 8&times;8 FP16 tiles from shared memory into registers, distributing each tile across 32 threads in exactly the layout HMMA / WGMMA expects.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>stmatrix (Hopper+)</h4>
+            <p>The reverse op &mdash; takes the tensor-core accumulator layout in registers and writes it back to shared memory in tile order. Used to drain WGMMA results before a global store.</p>
+        </div>
+    </div>
+
+    <div class="canvas-wrap">
+        <svg viewBox="0 0 720 320" width="720" height="320" xmlns="http://www.w3.org/2000/svg">
+            <style>
+                .smemBox { fill: rgba(165,214,255,0.12); stroke: #a5d6ff; }
+                .regBox  { fill: rgba(118,185,0,0.1); stroke: #76B900; }
+                .accBox  { fill: rgba(255,166,87,0.12); stroke: #ffa657; }
+                .opBox   { fill: #161b22; stroke: #21262d; }
+                .lblH { fill: #76B900; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 13px; }
+                .lblB { fill: #e6edf3; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+                .lblS { fill: #8b949e; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+                .arr  { stroke: #76B900; stroke-width: 2; fill: none; }
+            </style>
+
+            <rect x="20"  y="40" width="160" height="100" rx="6" class="smemBox"/>
+            <text x="100" y="62"  class="lblH" text-anchor="middle">Shared mem</text>
+            <text x="100" y="82"  class="lblB" text-anchor="middle">8x8 tile</text>
+            <text x="100" y="100" class="lblB" text-anchor="middle">x4 tiles</text>
+            <text x="100" y="120" class="lblS" text-anchor="middle">swizzled FP16</text>
+
+            <rect x="220" y="60" width="120" height="60" rx="6" class="opBox"/>
+            <text x="280" y="82"  class="lblB" text-anchor="middle">ldmatrix.sync</text>
+            <text x="280" y="100" class="lblS" text-anchor="middle">.m8n8.x4.b16</text>
+
+            <path d="M180 90 L218 90" class="arr"/>
+            <polygon points="216,86 224,90 216,94" fill="#76B900"/>
+
+            <rect x="380" y="40" width="160" height="100" rx="6" class="regBox"/>
+            <text x="460" y="62"  class="lblH" text-anchor="middle">Registers</text>
+            <text x="460" y="82"  class="lblB" text-anchor="middle">32 threads</text>
+            <text x="460" y="100" class="lblB" text-anchor="middle">tensor-core layout</text>
+            <text x="460" y="120" class="lblS" text-anchor="middle">2 fp16x2 / lane / tile</text>
+
+            <path d="M340 90 L378 90" class="arr"/>
+            <polygon points="376,86 384,90 376,94" fill="#76B900"/>
+
+            <rect x="580" y="60" width="120" height="60" rx="6" class="opBox"/>
+            <text x="640" y="82"  class="lblB" text-anchor="middle">wgmma /</text>
+            <text x="640" y="100" class="lblB" text-anchor="middle">hmma</text>
+
+            <path d="M540 90 L578 90" class="arr"/>
+            <polygon points="576,86 584,90 576,94" fill="#76B900"/>
+
+            <!-- Accumulator -->
+            <rect x="280" y="200" width="160" height="80" rx="6" class="accBox"/>
+            <text x="360" y="222" class="lblH" text-anchor="middle">Accumulator</text>
+            <text x="360" y="242" class="lblB" text-anchor="middle">FP32 fragments</text>
+            <text x="360" y="260" class="lblS" text-anchor="middle">in registers</text>
+
+            <path d="M640 130 Q640 240 442 240" class="arr"/>
+            <polygon points="448,236 440,240 448,244" fill="#76B900"/>
+
+            <text x="360" y="305" class="lblS" text-anchor="middle">stmatrix &rarr; back to smem &rarr; STG to global</text>
+        </svg>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">Why every fast matmul uses it</div>
+        <p>CUTLASS, cuBLAS, cuDNN and TRT-LLM all build their hot path around <code>ldmatrix</code> + <code>mma</code>. Without it, hand-shuffling 16-bit half-words between threads dominates the kernel; with it, the loads vanish into the same warp-scheduler slot as the FFMAs they feed.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-06">
+    <div class="slide-number">06</div>
+    <h2>Synchronisation in PTX</h2>
+    <p>SIMT only takes you so far. As soon as threads share data through shared memory or async copies, you need explicit fences. PTX exposes a small zoo of them, each with very specific semantics.</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Instruction</th><th>Scope</th><th>What it does</th></tr></thead>
+            <tbody>
+                <tr><td><code>bar.sync 0</code></td><td>Block</td><td>All threads hit this barrier; classic <code>__syncthreads()</code>.</td></tr>
+                <tr><td><code>bar.arrive</code></td><td>Block / warp</td><td>Non-blocking arrival; producer warps signal readiness without stalling.</td></tr>
+                <tr><td><code>bar.warpgroup.arrive</code></td><td>Warp group (4 warps)</td><td>Hopper warpgroup synchronisation; pairs with WGMMA pipelining.</td></tr>
+                <tr><td><code>mbarrier.init</code></td><td>Block</td><td>Set up an mbarrier with a thread arrival count.</td></tr>
+                <tr><td><code>mbarrier.arrive</code></td><td>Block</td><td>Drop a token into the mbarrier; non-blocking.</td></tr>
+                <tr><td><code>mbarrier.try_wait</code></td><td>Block</td><td>Block until barrier phase completes (or timeout).</td></tr>
+                <tr><td><code>fence.sc</code></td><td>cta / gpu / sys</td><td>Sequentially-consistent fence; orders all loads and stores.</td></tr>
+                <tr><td><code>fence.acq_rel</code></td><td>cta / gpu / sys</td><td>Acquire-release ordering (cheaper than SC).</td></tr>
+                <tr><td><code>cp.async.commit_group</code></td><td>Warp</td><td>Close out a group of in-flight <code>cp.async</code> loads.</td></tr>
+                <tr><td><code>cp.async.wait_group N</code></td><td>Warp</td><td>Wait until at most N async groups remain in flight.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>The producer/consumer pipeline</h4>
+            <p>Hopper's TMA + WGMMA design needs <em>asynchronous</em> producers and consumers. <code>mbarrier</code> + <code>bar.warpgroup.arrive</code> let one warp group load tiles via TMA into shared memory while another warp group runs WGMMA on the previous tile &mdash; the canonical ping-pong used by CUTLASS Hopper kernels.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Fences vs barriers</h4>
+            <p>A <em>barrier</em> is a meeting point: thread N waits for thread M. A <em>fence</em> is a memory-ordering primitive: it doesn't wait for anyone, it only constrains the visible order of memory ops. Most bugs come from confusing the two.</p>
+        </div>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">PTX &mdash; mbarrier-based producer/consumer pattern</div>
+<pre><code><span class="dir">.shared</span> <span class="dir">.align</span> 8 <span class="type">.b64</span> mbar;
+
+<span class="cm">// once, by thread 0:</span>
+<span class="kw">mbarrier.init.shared.b64</span>      [mbar], 128;        <span class="cm">// 128 arrivals</span>
+
+<span class="cm">// producer warp group: load a tile via TMA</span>
+<span class="kw">cp.async.bulk.tensor.shared::cluster.global</span>
+    [smem_dst], [tma_desc, {x, y}], [mbar];
+
+<span class="cm">// consumer warp group: wait then run WGMMA</span>
+<span class="kw">mbarrier.try_wait.parity.shared.b64</span> %p, [mbar], %phase;
+<span class="kw">@!</span>%p <span class="kw">bra</span> retry;
+<span class="kw">wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16</span>  ... ;
+<span class="kw">wgmma.commit_group.sync.aligned</span>;
+<span class="kw">wgmma.wait_group.sync.aligned</span>   1;
+</code></pre>
+    </div>
+</section>
+
+<section class="slide" id="slide-07">
+    <div class="slide-number">07</div>
+    <h2>Predication &amp; Branching</h2>
+    <p>GPUs hate branches: a divergent branch inside a 32-thread warp forces both paths to execute, with the wrong-side lanes masked off. NVIDIA's first answer is to avoid branches entirely &mdash; <em>predicate</em> every instruction.</p>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Predicate registers</h4>
+            <p>PTX has 7 architectural predicate regs (<code>%p0</code>..<code>%p6</code>); SASS exposes <code>P0</code>..<code>P6</code> plus the always-true <code>PT</code>. Comparison ops (<code>setp</code>, <code>ISETP</code>) write predicates; almost every other op can be guarded by one.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Predicated form</h4>
+            <p><code>@%p0 add.s32 %r1, %r2, %r3</code> &mdash; only threads where p0 = true execute. The unselected lanes still consume the warp slot; the result write is suppressed.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Real branches</h4>
+            <p><code>@%p0 bra target</code> in PTX, <code>@P0 BRA target</code> in SASS. If all lanes agree (uniform branch), a single warp jumps. If lanes disagree (divergent), the SM walks each side serially with a mask.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Independent thread scheduling</h4>
+            <p>Pre-Volta, after a divergent branch the warp would only re-converge at a compiler-marked sync point. Volta+ tracks each thread's PC; lanes can re-converge naturally any time their PCs match again. That changed how races are written safely.</p>
+        </div>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">CUDA &mdash; trivial conditional</div>
+<pre><code><span class="kw">__global__</span> <span class="type">void</span> <span class="fn">pick</span>(<span class="type">float</span>* y, <span class="type">float</span> a, <span class="type">float</span> b, <span class="type">int</span>* x) {
+    <span class="type">int</span> i = threadIdx.x;
+    <span class="kw">if</span> (x[i] &gt; 0)
+        y[i] = a;
+    <span class="kw">else</span>
+        y[i] = b;
+}
+</code></pre>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">SASS for it (sm_90, abridged) &mdash; no branch at all</div>
+<pre><code>      <span class="fn">S2R</span>      R0, SR_TID.X ;
+      <span class="fn">ULDC.64</span>  UR4, c[0x0][0x218] ;          <span class="cm">// ptr x</span>
+      <span class="fn">IMAD.WIDE</span> R2, R0, 0x4, UR4 ;
+      <span class="fn">LDG.E</span>    R5, [R2.64] ;                 <span class="cm">// x[i]</span>
+      <span class="fn">ISETP.GT.AND</span> P0, PT, R5, RZ, PT ;       <span class="cm">// P0 = (x[i] &gt; 0)</span>
+      <span class="fn">MOV</span>      R7, c[0x0][0x210] ;           <span class="cm">// b</span>
+@P0   <span class="fn">MOV</span>      R7, c[0x0][0x20c] ;           <span class="cm">// a   (overrides if P0)</span>
+      <span class="fn">ULDC.64</span>  UR4, c[0x0][0x208] ;          <span class="cm">// ptr y</span>
+      <span class="fn">IMAD.WIDE</span> R2, R0, 0x4, UR4 ;
+      <span class="fn">STG.E</span>    [R2.64], R7 ;
+@PT   <span class="fn">EXIT</span> ;
+</code></pre>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">Why this matters</div>
+        <p>The CUDA author wrote a branch; the SASS has none. The compiler used <code>ISETP</code> + a predicated <code>MOV</code> over the "else" value to keep the warp dense. This is the <em>preferred</em> shape for short, balanced conditionals &mdash; you only see real <code>BRA</code>s when the two sides do substantially different work.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-08">
+    <div class="slide-number">08</div>
+    <h2>Reading SASS &mdash; A Worked Example</h2>
+    <p>Take the simplest possible kernel and walk through its SASS line by line. Compare two architectures to see how the same source compiles differently.</p>
+
+    <div class="code-block">
+        <div class="code-header">CUDA source</div>
+<pre><code><span class="kw">__global__</span> <span class="type">void</span> <span class="fn">vec_add</span>(<span class="kw">const</span> <span class="type">float</span>* a, <span class="kw">const</span> <span class="type">float</span>* b, <span class="type">float</span>* c) {
+    <span class="type">int</span> i = blockIdx.x * blockDim.x + threadIdx.x;
+    c[i] = a[i] + b[i];
+}
+</code></pre>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">SASS &mdash; sm_90 (Hopper) &mdash; cuobjdump --dump-sass</div>
+<pre><code>      <span class="fn">MOV</span>        R1, c[0x0][0x28] ;             <span class="cm">// stack base</span>
+      <span class="fn">S2R</span>        R0, SR_CTAID.X ;               <span class="cm">// blockIdx.x</span>
+      <span class="fn">S2R</span>        R3, SR_TID.X ;                 <span class="cm">// threadIdx.x</span>
+      <span class="fn">IMAD</span>       R0, R0, c[0x0][0x0], R3 ;      <span class="cm">// i = bid*bdim + tid</span>
+      <span class="fn">IMAD.WIDE</span>  R2, R0, 0x4, c[0x0][0x210] ;   <span class="cm">// &amp;a[i]</span>
+      <span class="fn">LDG.E</span>      R5, [R2.64] ;                  <span class="cm">// load a[i]</span>
+      <span class="fn">LDG.E</span>      R7, [R2.64+0x800000] ;         <span class="cm">// load b[i]</span>
+      <span class="fn">FADD</span>       R5, R5, R7 ;
+      <span class="fn">STG.E</span>      [R2.64+0x1000000], R5 ;        <span class="cm">// store c[i]</span>
+@PT   <span class="fn">EXIT</span> ;
+</code></pre>
+    </div>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Per-line annotation (sm_90)</h4>
+            <ul>
+                <li><code>S2R</code> &mdash; "special to register": reads built-ins like <code>SR_CTAID.X</code>.</li>
+                <li><code>IMAD.WIDE</code> &mdash; one fused 64-bit multiply-add for index-to-pointer arithmetic.</li>
+                <li><code>LDG.E</code> &mdash; load global, generic-address; the <code>+0x800000</code> is a relative offset from the same base.</li>
+                <li><code>FADD</code> &mdash; FP32 add.</li>
+                <li><code>STG.E</code> &mdash; store global, generic-address.</li>
+                <li><code>@PT EXIT</code> &mdash; unconditional kernel exit.</li>
+            </ul>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Why the offsets?</h4>
+            <p>Three pointers (a, b, c) are folded into a single base + offset because <code>ptxas</code> recognised they're laid out contiguously in the device-side argument struct. The <code>0x800000</code> and <code>0x1000000</code> are stride bytes between buffers in this build &mdash; they'll vary.</p>
+        </div>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">SASS &mdash; sm_75 (Turing) &mdash; same kernel, older encoding</div>
+<pre><code>      <span class="fn">MOV</span>        R1, c[0x0][0x28] ;
+      <span class="fn">S2R</span>        R0, SR_CTAID.X ;
+      <span class="fn">S2R</span>        R2, SR_TID.X ;
+      <span class="fn">IMAD</span>       R0, R0, c[0x0][0x0], R2 ;
+      <span class="fn">SHF.L.U64</span>  R3, R0, 0x2, RZ ;              <span class="cm">// i &lt;&lt; 2</span>
+      <span class="fn">IADD3</span>      R2.CC, R3, c[0x0][0x140], RZ ; <span class="cm">// + base_a (low)</span>
+      <span class="fn">IMAD.X</span>     R3, RZ, RZ, c[0x0][0x144] ;    <span class="cm">// + base_a (high carry)</span>
+      <span class="fn">LDG.E.SYS</span>  R5, [R2] ;                     <span class="cm">// load a[i]</span>
+      <span class="fn">IADD3</span>      R2.CC, R3, c[0x0][0x148], RZ ;
+      <span class="fn">IMAD.X</span>     R3, RZ, RZ, c[0x0][0x14c] ;
+      <span class="fn">LDG.E.SYS</span>  R7, [R2] ;                     <span class="cm">// load b[i]</span>
+      <span class="fn">FADD</span>       R5, R5, R7 ;
+      <span class="fn">IADD3</span>      R2.CC, R3, c[0x0][0x150], RZ ;
+      <span class="fn">IMAD.X</span>     R3, RZ, RZ, c[0x0][0x154] ;
+      <span class="fn">STG.E.SYS</span>  [R2], R5 ;
+      <span class="fn">EXIT</span> ;
+</code></pre>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">What changed between Turing and Hopper</div>
+        <p>Turing has no <code>IMAD.WIDE</code>: 64-bit address arithmetic takes a shift + a 32-bit add with carry (<code>IADD3.CC</code>) followed by a high-half <code>IMAD.X</code>. Hopper folds it all into one instruction. The kernel went from 14 SASS ops to 9 &mdash; not because the work shrank, but because the encoding got denser.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-09">
+    <div class="slide-number">09</div>
+    <h2>The HMMA / WGMMA Compilation Path</h2>
+    <p>Watch one matmul tile travel through three layers. The C++ frontend is a thin wrapper; PTX exposes the MMA almost identically; SASS is one tensor-core op.</p>
+
+    <div class="code-block">
+        <div class="code-header">CUDA C++ &mdash; nvcuda::wmma frontend</div>
+<pre><code><span class="kw">#include</span> <span class="str">&lt;mma.h&gt;</span>
+<span class="kw">using namespace</span> nvcuda;
+
+<span class="kw">__global__</span> <span class="type">void</span> <span class="fn">tile_matmul</span>(<span class="kw">const</span> <span class="type">half</span>* A, <span class="kw">const</span> <span class="type">half</span>* B, <span class="type">float</span>* C) {
+    <span class="kw">__shared__</span> <span class="type">half</span> sA[16][16], sB[16][16];
+    <span class="cm">// ... cooperative load of the 16x16 tile into smem ...</span>
+
+    wmma::fragment&lt;wmma::matrix_a, 16, 16, 16, <span class="type">half</span>, wmma::row_major&gt; a_frag;
+    wmma::fragment&lt;wmma::matrix_b, 16, 16, 16, <span class="type">half</span>, wmma::col_major&gt; b_frag;
+    wmma::fragment&lt;wmma::accumulator, 16, 16, 16, <span class="type">float</span>&gt;                c_frag;
+
+    wmma::fill_fragment(c_frag, 0.0f);
+    wmma::load_matrix_sync(a_frag, &amp;sA[0][0], 16);
+    wmma::load_matrix_sync(b_frag, &amp;sB[0][0], 16);
+    wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+    wmma::store_matrix_sync(C, c_frag, 16, wmma::mem_row_major);
+}
+</code></pre>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">PTX (nvcc -ptx, sm_80 target)</div>
+<pre><code>    <span class="kw">wmma.load.a.sync.aligned.m16n16k16.row.shared.f16</span>
+        {%a0, %a1, %a2, %a3, %a4, %a5, %a6, %a7}, [smem_a], 16;
+
+    <span class="kw">wmma.load.b.sync.aligned.m16n16k16.col.shared.f16</span>
+        {%b0, %b1, %b2, %b3, %b4, %b5, %b6, %b7}, [smem_b], 16;
+
+    <span class="kw">wmma.mma.sync.aligned.row.col.m16n16k16.f32.f16.f16.f32</span>
+        {%c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7},
+        {%a0, %a1, %a2, %a3, %a4, %a5, %a6, %a7},
+        {%b0, %b1, %b2, %b3, %b4, %b5, %b6, %b7},
+        {%c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7};
+
+    <span class="kw">wmma.store.d.sync.aligned.m16n16k16.row.global.f32</span>
+        [out], {%c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7}, 16;
+</code></pre>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">SASS (sm_80 Ampere) &mdash; cuobjdump --dump-sass</div>
+<pre><code>      <span class="fn">LDSM.16.MT88.4</span>  R12, [R20+0x0] ;                <span class="cm">// ldmatrix &rarr; A frag</span>
+      <span class="fn">LDSM.16.M88.4</span>   R20, [R20+0x800] ;              <span class="cm">// ldmatrix &rarr; B frag</span>
+      <span class="fn">HMMA.16816.F32</span>  R8, R12, R20, R8 ;              <span class="cm">// 16x8x16 HMMA, FP32 accum</span>
+      <span class="fn">STS.128</span>         [R28], R8 ;                     <span class="cm">// drain to shared</span>
+      <span class="fn">STG.E.128</span>       [R30.64], R8 ;                  <span class="cm">// store global</span>
+</code></pre>
+    </div>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>One PTX op &rarr; one SASS op</h4>
+            <p>From sm_70 onwards the PTX MMA family is a near-direct mapping to a single tensor-core SASS instruction (<code>HMMA</code> or <code>WGMMA</code>). NVIDIA exposes the hardware almost transparently &mdash; the heavy lifting is in the operand layout, not the op itself.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Why 16.8.16 not 16.16.16?</h4>
+            <p>HMMA on Ampere implements <code>m16n8k16</code> in a single hardware tick; the 16&times;16&times;16 logical tile is two such ops issued back-to-back. <code>cuobjdump</code> sometimes shows them collapsed; sometimes split. Hopper's WGMMA jumps straight to <code>m64n128k16</code>.</p>
+        </div>
+    </div>
+</section>
+
+<section class="slide" id="slide-10">
+    <div class="slide-number">10</div>
+    <h2>ptxas Optimisations &amp; Diagnostics</h2>
+    <p><code>ptxas</code> is the optimising assembler that lowers PTX to SASS. It does dead-code elimination, register allocation, instruction scheduling for ILP, peephole rewriting, address-arithmetic folding, and constant propagation. Two of its <em>diagnostic</em> outputs are essential reading.</p>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>-v &mdash; resource report <span class="badge ok">essential</span></h4>
+            <p>Reports per-kernel: registers used, shared memory bytes, spill loads, spill stores, stack usage, constant memory. <strong>The register count is what decides occupancy.</strong></p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>-warn-spills</h4>
+            <p>Warn when the register allocator spills locals to <code>.local</code> (which is L1/L2-backed DRAM, not on-chip). A spill in the inner loop is usually catastrophic.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>-O3 (default)</h4>
+            <p>Full optimisation. <code>-O0</code> exists, mostly useless. <code>-O3 -ftz=true</code> for speed; <code>-prec-div=false -prec-sqrt=false</code> for the fastest FP throughput.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>-maxrregcount=N</h4>
+            <p>Caps the per-thread register count. Forces spills if the kernel really needed more &mdash; usually used to push occupancy up at the cost of memory traffic. Measure both ways.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Cache hints</h4>
+            <p><code>-Xptxas -dlcm=ca</code> sets the default load-cache mode (ca = cache all, cg = cache global only, cs = streaming). Per-load override via PTX <code>ld.global.ca.f32</code>.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>-lineinfo</h4>
+            <p>Emits source-line metadata so <code>cuobjdump</code>, Nsight Compute and <code>nvdisasm</code> can map SASS back to your CUDA file. Negligible runtime cost; turn it on always.</p>
+        </div>
+    </div>
+
+    <div class="code-block">
+        <div class="code-header">Build line &mdash; full diagnostics</div>
+<pre><code>nvcc -O3 -arch=sm_90 \
+     -Xptxas=-v,-warn-spills \
+     -lineinfo \
+     -o kernel.cubin kernel.cu
+
+<span class="cm">// example output:</span>
+<span class="cm">// ptxas info  : Compiling entry function 'tile_matmul' for 'sm_90'</span>
+<span class="cm">// ptxas info  : Function properties for tile_matmul</span>
+<span class="cm">//     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads</span>
+<span class="cm">// ptxas info  : Used 96 registers, used 0 barriers, 16384 bytes smem,</span>
+<span class="cm">//               456 bytes cmem[0]</span>
+</code></pre>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">Reading the report</div>
+        <p>"Used 96 registers" on Hopper means each thread holds 96 32-bit regs. The SM has 65536 registers, so a 256-thread block uses 256&times;96 = 24576, leaving room for 2 concurrent blocks per SM (limit is occupancy, not regs). "0 bytes spill" means the register allocator was happy. If you see non-zero spills in a hot kernel, raise <code>-maxrregcount</code> or rewrite the kernel to use less state.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-11">
+    <div class="slide-number">11</div>
+    <h2>Interactive: SASS Decoder</h2>
+    <p>Pick a SASS mnemonic; see its operand shape, latency class, throughput, predicate behaviour, the PTX op it usually comes from, and a one-line performance note. Knowledge inlined as a JS object &mdash; everything runs locally.</p>
+
+    <div class="control-panel">
+        <div class="control-row">
+            <label for="sass-mnemonic">SASS instruction</label>
+            <select id="sass-mnemonic">
+                <option value="FFMA">FFMA &mdash; fused FP32 multiply-add</option>
+                <option value="HFMA2">HFMA2 &mdash; FP16x2 fused multiply-add</option>
+                <option value="IMAD">IMAD &mdash; integer multiply-add</option>
+                <option value="IADD3">IADD3 &mdash; 3-operand integer add</option>
+                <option value="ISETP">ISETP &mdash; integer set-predicate</option>
+                <option value="LDG">LDG &mdash; load global</option>
+                <option value="STG">STG &mdash; store global</option>
+                <option value="LDS">LDS &mdash; load shared</option>
+                <option value="STS">STS &mdash; store shared</option>
+                <option value="LDSM">LDSM &mdash; ldmatrix (shared&rarr;regs in MMA layout)</option>
+                <option value="STSM">STSM &mdash; stmatrix (regs&rarr;shared)</option>
+                <option value="HMMA">HMMA &mdash; half-precision MMA (Volta+)</option>
+                <option value="WGMMA">WGMMA &mdash; warp-group async MMA (Hopper+)</option>
+                <option value="BAR.SYNC">BAR.SYNC &mdash; block barrier</option>
+                <option value="S2R">S2R &mdash; special-register read</option>
+                <option value="SHFL">SHFL &mdash; warp shuffle</option>
+                <option value="FENCE">FENCE &mdash; memory fence</option>
+            </select>
+        </div>
+
+        <div id="sass-metrics" class="metric-grid"></div>
+        <div id="sass-result" class="result-box"></div>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">Latency vs throughput</div>
+        <p>"Latency" is how many cycles between issue and result-available. "Throughput" is how often the warp scheduler can issue another op of this kind &mdash; usually 1 per cycle for ALU ops, much less for memory ops. The scheduler hides latency by issuing other warps' instructions in between.</p>
+    </div>
+</section>
+
+<!-- ════════════════════════════════════ Footer ════════════════════════════════════ -->
+<footer class="footer">
+    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLMs#nvidia-gpu-architectures">NVIDIA GPU Architectures Series</a></p>
+    <p style="margin-top: 0.5rem; font-size: 0.8rem;"><a href="https://github.com/BrendanJamesLynskey/LLMs#nvidia-gpu-architectures">Back to Series Index</a></p>
+</footer>
+
+<script>
+    // Smooth scroll for TOC links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+
+    // Subtle fade-in on scroll
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.slide').forEach(slide => {
+        slide.style.opacity = '0';
+        slide.style.transform = 'translateY(30px)';
+        slide.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+        observer.observe(slide);
+    });
+
+    // ──────────────────────────────────────────────
+    // Slide 11 — SASS instruction decoder
+    // ──────────────────────────────────────────────
+    const SASS_DB = {
+        "FFMA": {
+            family: "FP32 ALU", operands: "3 (Rd, Ra, Rb, Rc)", latency: "~4 cyc",
+            throughput: "1 / cyc / scheduler", predicable: "Y", writesReg: "Y", writesPred: "N",
+            ptx: "fma.rn.f32 / mad.f32",
+            emittedFor: "Every dense FP32 expression: a*b + c, polynomial eval, dot products.",
+            note: "The workhorse FP32 op. Every dense matmul, every FFT butterfly, every BLAS L1 lands on FFMA."
+        },
+        "HFMA2": {
+            family: "FP16x2 ALU", operands: "3 (paired half2)", latency: "~4 cyc",
+            throughput: "1 / cyc / scheduler (= 2 FP16 ops)", predicable: "Y", writesReg: "Y", writesPred: "N",
+            ptx: "fma.rn.f16x2",
+            emittedFor: "FP16 vector code that is not large enough to use tensor cores.",
+            note: "Doubles FP16 throughput vs scalar half. Used by activations, layernorms, small reductions."
+        },
+        "IMAD": {
+            family: "Integer ALU", operands: "3 (Rd = Ra*Rb + Rc)", latency: "~6 cyc",
+            throughput: "1 / cyc / scheduler", predicable: "Y", writesReg: "Y", writesPred: "N",
+            ptx: "mad.lo.s32 / mul.wide.s32",
+            emittedFor: "Index arithmetic, pointer offsets, strided loops.",
+            note: "Hopper added IMAD.WIDE for 64-bit address math in one op &mdash; pre-Hopper this took SHF + IADD3 + IMAD.X."
+        },
+        "IADD3": {
+            family: "Integer ALU", operands: "3 (Rd = Ra + Rb + Rc)", latency: "~4 cyc",
+            throughput: "1 / cyc / scheduler", predicable: "Y", writesReg: "Y", writesPred: "Y (.CC variant)",
+            ptx: "add.s32 / add.cc.u32",
+            emittedFor: "General-purpose add chain; address generation low half (.CC = sets carry).",
+            note: "The 3-source form folds two adds into one slot, saving an instruction in pointer math."
+        },
+        "ISETP": {
+            family: "Integer compare", operands: "Pd, Ra, Rb, Pgated", latency: "~4 cyc",
+            throughput: "1 / cyc / scheduler", predicable: "Y", writesReg: "N", writesPred: "Y",
+            ptx: "setp.{eq,lt,le,ne,gt,ge}.{s32,u32}",
+            emittedFor: "Every comparison: bounds check, loop bound, conditional select.",
+            note: "Combined comparison + boolean fold (.AND, .OR). The compiler chains ISETPs to build complex predicates without ever branching."
+        },
+        "LDG": {
+            family: "Memory (global load)", operands: "Rd, [Ra+offset]", latency: "~400-800 cyc DRAM",
+            throughput: "1 / 4-8 cyc / scheduler", predicable: "Y", writesReg: "Y", writesPred: "N",
+            ptx: "ld.global.{type}",
+            emittedFor: "Reading from device DRAM: kernel inputs, weights, KV cache.",
+            note: ".E = generic-address; .128 vector form moves 16 B per lane (best efficiency for warp-aligned loads)."
+        },
+        "STG": {
+            family: "Memory (global store)", operands: "[Rd+offset], Ra", latency: "fire-and-forget",
+            throughput: "1 / 4-8 cyc / scheduler", predicable: "Y", writesReg: "N", writesPred: "N",
+            ptx: "st.global.{type}",
+            emittedFor: "Writing back kernel outputs, attention scores, logits.",
+            note: "Stores retire to L2 then DRAM; ordering only enforced at fence/barrier boundaries."
+        },
+        "LDS": {
+            family: "Memory (shared load)", operands: "Rd, [Ra+offset]", latency: "~25 cyc",
+            throughput: "1 / cyc / scheduler", predicable: "Y", writesReg: "Y", writesPred: "N",
+            ptx: "ld.shared.{type}",
+            emittedFor: "Reading the on-chip scratchpad in matmul, reductions, FFT staging.",
+            note: "Bank conflicts = serialised access. Hopper added 32-way banks; older arches have 32 banks each 4 B wide."
+        },
+        "STS": {
+            family: "Memory (shared store)", operands: "[Rd+offset], Ra", latency: "~25 cyc",
+            throughput: "1 / cyc / scheduler", predicable: "Y", writesReg: "N", writesPred: "N",
+            ptx: "st.shared.{type}",
+            emittedFor: "Staging tiles into smem; writing reduction partials.",
+            note: "Same bank-conflict rules as LDS. Often paired with bar.sync to publish to other warps."
+        },
+        "LDSM": {
+            family: "Tensor-core feeder", operands: "{Rd0..Rd3}, [Ra]", latency: "~30 cyc",
+            throughput: "limited (tensor pipe)", predicable: "Y", writesReg: "Y (multiple)", writesPred: "N",
+            ptx: "ldmatrix.sync.aligned.m8n8.x4.shared.b16",
+            emittedFor: "Loading a 16x16 (or larger) tile from smem into the layout HMMA/WGMMA expect.",
+            note: "Without LDSM, hand-arranging fragments costs as much as the matmul. Every CUTLASS / cuBLAS hot loop uses it."
+        },
+        "STSM": {
+            family: "Tensor-core drain", operands: "[Rd], {Ra0..Ra3}", latency: "~30 cyc",
+            throughput: "limited (tensor pipe)", predicable: "Y", writesReg: "N", writesPred: "N",
+            ptx: "stmatrix.sync.aligned.m8n8.x4.shared.b16",
+            emittedFor: "Writing WGMMA accumulators back to smem in tile order before STG.",
+            note: "Hopper-only. Pairs with LDSM to make the tile-load / tile-store cost vanish into the MMA schedule."
+        },
+        "HMMA": {
+            family: "Tensor core (MMA)", operands: "Rd, Ra, Rb, Rc (all fragments)", latency: "~16-32 cyc",
+            throughput: "1 op / 4 cyc / scheduler, but each op is 16x8x16 = 2048 FMAs",
+            predicable: "Y", writesReg: "Y (multiple)", writesPred: "N",
+            ptx: "wmma.mma.sync / mma.sync",
+            emittedFor: "FP16/BF16/TF32/FP8 dense matmul on Volta..Ada tensor cores.",
+            note: "On Ampere, .16816.F32 is the default shape: 16x8x16 with FP32 accumulate."
+        },
+        "WGMMA": {
+            family: "Tensor core (warp-group async MMA)",
+            operands: "{Rd...}, sh_desc_a, sh_desc_b, scale_d, scale_a, scale_b, transA, transB",
+            latency: "async &mdash; commit_group + wait_group", throughput: "1 op / 8-16 cyc / warp group",
+            predicable: "Y", writesReg: "Y (very many)", writesPred: "N",
+            ptx: "wgmma.mma_async.sync.aligned.mNnNkN.{accum}.{a}.{b}",
+            emittedFor: "Hopper-class FP8/BF16/TF32 matmul; CUTLASS Hopper kernels, FlashAttention-3.",
+            note: "Operates on 4-warp groups (128 threads). Inputs MUST come from shared memory via descriptors. Async &mdash; the warp keeps issuing other work."
+        },
+        "BAR.SYNC": {
+            family: "Synchronisation", operands: "barrier_id [, count]", latency: "warp-dependent",
+            throughput: "blocks until all arrive", predicable: "Y", writesReg: "N", writesPred: "N",
+            ptx: "bar.sync N / bar.arrive N",
+            emittedFor: "__syncthreads(), __syncwarp(), producer/consumer rendezvous.",
+            note: "Up to 16 named barriers per block; bar.sync 0 is the classic block barrier."
+        },
+        "S2R": {
+            family: "Special register", operands: "Rd, SR_*", latency: "~25 cyc",
+            throughput: "1 / cyc / scheduler", predicable: "Y", writesReg: "Y", writesPred: "N",
+            ptx: "mov.u32 r, %tid.x  /  %ctaid.x  /  %ntid.x",
+            emittedFor: "Reading threadIdx, blockIdx, blockDim, laneid, warpid.",
+            note: "Always emitted at kernel entry. Cheap, but not free &mdash; the compiler hoists these out of inner loops."
+        },
+        "SHFL": {
+            family: "Warp data exchange", operands: "Rd, Ra, src_lane, mask", latency: "~20 cyc",
+            throughput: "1 / cyc / scheduler", predicable: "Y", writesReg: "Y", writesPred: "Y (validity)",
+            ptx: "shfl.sync.{idx,up,down,bfly}.b32",
+            emittedFor: "Warp-level reductions, prefix scans, transposes without going through smem.",
+            note: "Free vs the smem alternative: zero memory traffic, ~20 cyc latency. The classic warp-reduce pattern."
+        },
+        "FENCE": {
+            family: "Memory ordering", operands: "scope (cta/gpu/sys)", latency: "varies",
+            throughput: "stalls only the issuing warp", predicable: "Y", writesReg: "N", writesPred: "N",
+            ptx: "fence.sc.{cta,gpu,sys} / fence.acq_rel.{...}",
+            emittedFor: "Lock-free producer/consumer between warps, blocks, or GPUs.",
+            note: "Not a barrier &mdash; doesn't wait for other threads. Constrains *visible order* of memory ops to other threads at the chosen scope."
+        }
+    };
+
+    function renderSASS(mnemonic) {
+        const d = SASS_DB[mnemonic];
+        if (!d) return;
+
+        const m = document.getElementById('sass-metrics');
+        m.innerHTML = `
+            <div class="metric"><div class="metric-label">Family</div><div class="metric-value" style="font-size:0.95rem;">${d.family}</div></div>
+            <div class="metric"><div class="metric-label">Operands</div><div class="metric-value" style="font-size:0.85rem;">${d.operands}</div></div>
+            <div class="metric"><div class="metric-label">Latency</div><div class="metric-value" style="font-size:0.95rem;">${d.latency}</div></div>
+            <div class="metric"><div class="metric-label">Throughput</div><div class="metric-value" style="font-size:0.8rem;">${d.throughput}</div></div>
+            <div class="metric"><div class="metric-label">Predicable</div><div class="metric-value">${d.predicable}</div></div>
+            <div class="metric"><div class="metric-label">Writes reg</div><div class="metric-value">${d.writesReg}</div></div>
+            <div class="metric"><div class="metric-label">Writes pred</div><div class="metric-value">${d.writesPred}</div></div>
+        `;
+
+        const r = document.getElementById('sass-result');
+        r.innerHTML = `
+            <div><span class="line-label">PTX origin:&nbsp;</span><span class="line-val">${d.ptx}</span></div>
+            <div style="margin-top:0.4rem;"><span class="line-label">Emitted for:</span> ${d.emittedFor}</div>
+            <div style="margin-top:0.4rem;"><span class="line-label">Note:</span> ${d.note}</div>
+        `;
+    }
+
+    const sel = document.getElementById('sass-mnemonic');
+    sel.addEventListener('change', () => renderSASS(sel.value));
+    renderSASS(sel.value);
+</script>
+
+</body>
+</html>
