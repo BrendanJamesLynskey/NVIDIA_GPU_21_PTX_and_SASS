@@ -889,7 +889,7 @@
 <section class="slide" id="slide-02">
     <div class="slide-number">02</div>
     <h2>PTX &mdash; The Portable IR</h2>
-    <p>PTX (Parallel Thread eXecution) is NVIDIA's published, stable, ASCII-text intermediate representation. It looks like a typed assembly. It's the only ISA NVIDIA fully documents &mdash; the <em>PTX ISA Reference</em> is the official contract between compiler authors and the driver.</p>
+    <p>PTX (Parallel Thread Execution) is NVIDIA's published, stable, ASCII-text intermediate representation. It looks like a typed assembly. It's the only ISA NVIDIA fully documents &mdash; the <em>PTX ISA Reference</em> is the official contract between compiler authors and the driver.</p>
 
     <div class="diagram-grid cols-2">
         <div class="diagram-panel accent-border">
@@ -981,10 +981,10 @@
             <tbody>
                 <tr><td>Volta</td><td>sm_70</td><td>First HMMA (8.8.4 FP16); independent thread scheduling.</td></tr>
                 <tr><td>Turing</td><td>sm_75</td><td>HMMA INT8/INT4; uniform datapath (URF, UR registers).</td></tr>
-                <tr><td>Ampere</td><td>sm_80 / sm_86</td><td>HMMA 16.8.16 BF16/TF32; LDGSTS (cp.async); LDMATRIX.</td></tr>
+                <tr><td>Ampere</td><td>sm_80 / sm_86 / sm_87</td><td>HMMA m16n8k16 FP16/BF16, m16n8k8 TF32; LDGSTS (cp.async, async global&rarr;shared); LDMATRIX; sparsity 2:4.</td></tr>
                 <tr><td>Ada Lovelace</td><td>sm_89</td><td>FP8 HMMA on tensor cores; otherwise same SASS family as Ampere.</td></tr>
                 <tr><td>Hopper</td><td>sm_90</td><td>WGMMA (warp-group async MMA); STMATRIX; UTMALDG/UTMASTG (TMA).</td></tr>
-                <tr><td>Blackwell</td><td>sm_100 / sm_120</td><td>FP4/FP6 MMA; second-gen TMA; new clusters/DSMEM ops.</td></tr>
+                <tr><td>Blackwell</td><td>sm_100 / sm_120</td><td>New <code>tcgen05.mma</code> SM-level tensor-core family with FP4 (MX-FP4 &amp; NVFP4) / FP6 / FP8; second-gen TMA.</td></tr>
             </tbody>
         </table>
     </div>
@@ -1028,7 +1028,7 @@
 
     <div class="callout">
         <div class="callout-label">Read it like a regs-and-memory CPU</div>
-        <p>SASS is a 3-operand RISC-ish ISA with predication, fixed 32-thread warps and constant-memory operands. If you can read ARM or RISC-V assembly, you can read SASS &mdash; the unfamiliar bits are the address-space modifiers (<code>.E</code> = generic-address load) and the constant banks (<code>c[0x0][..]</code>).</p>
+        <p>SASS is a 3-operand RISC-ish ISA with predication, fixed 32-thread warps and constant-memory operands. If you can read ARM or RISC-V assembly, you can read SASS &mdash; the unfamiliar bits are the addressing modifiers (<code>.E</code> = extended/64-bit address form on LDG/STG) and the constant banks (<code>c[0x0][..]</code>).</p>
     </div>
 </section>
 
@@ -1044,11 +1044,11 @@
             </thead>
             <tbody>
                 <tr><td><strong>HMMA</strong></td><td>Volta &rarr; Ampere &rarr; Ada</td><td>8.8.4, 16.8.8, 16.8.16</td><td>FP16, BF16, TF32, FP8 (Ada)</td><td>Hardware MMA. Sync, warp-scoped.</td></tr>
-                <tr><td><strong>WGMMA</strong></td><td>Hopper (sm_90+)</td><td>64.N.16, N &le; 256</td><td>FP8 (E4M3/E5M2), BF16, TF32, FP16</td><td>Warp-group async MMA. Operands in shared memory.</td></tr>
+                <tr><td><strong>WGMMA</strong></td><td>Hopper (sm_90+)</td><td>m64.N.K, N up to 256; K=16 (FP16/BF16), K=8 (TF32), K=32 (FP8/INT8)</td><td>FP8 (E4M3/E5M2), BF16, TF32, FP16, INT8</td><td>Warp-group async MMA. Operands in shared memory.</td></tr>
                 <tr><td><strong>WMMA</strong></td><td>C++/PTX abstraction</td><td>maps to HMMA</td><td>same as HMMA</td><td>Frontend wrapper; not a SASS opcode.</td></tr>
                 <tr><td><strong>IMMA</strong></td><td>Turing &rarr; Hopper</td><td>8.8.16, 16.8.32</td><td>INT8, INT4 (Turing/Ampere)</td><td>Integer tensor-core MMA.</td></tr>
                 <tr><td><strong>BMMA</strong></td><td>Turing &rarr; Ampere</td><td>8.8.128</td><td>1-bit operands</td><td>Binary MMA; XNOR + popcount.</td></tr>
-                <tr><td><strong>QGMMA / FP4 MMA</strong></td><td>Blackwell (sm_100+)</td><td>64.N.32 etc.</td><td>FP4 (MX), FP6, FP8</td><td>Doubles tensor-core throughput again.</td></tr>
+                <tr><td><strong>tcgen05.mma</strong></td><td>Blackwell (sm_100 / sm_120)</td><td>SM-level tile shapes</td><td>FP4 (MX-FP4 + NVFP4), FP6, FP8, BF16, FP16</td><td>New SM-level tensor-core ops; introduces FP4 microscaling (MX-FP4 32-element E8M0; NVFP4 16-element E4M3 + per-tensor FP32).</td></tr>
             </tbody>
         </table>
     </div>
@@ -1181,7 +1181,7 @@
             <tbody>
                 <tr><td><code>bar.sync 0</code></td><td>Block</td><td>All threads hit this barrier; classic <code>__syncthreads()</code>.</td></tr>
                 <tr><td><code>bar.arrive</code></td><td>Block / warp</td><td>Non-blocking arrival; producer warps signal readiness without stalling.</td></tr>
-                <tr><td><code>bar.warpgroup.arrive</code></td><td>Warp group (4 warps)</td><td>Hopper warpgroup synchronisation; pairs with WGMMA pipelining.</td></tr>
+                <tr><td><code>wgmma.fence</code> / <code>wgmma.commit_group</code> / <code>wgmma.wait_group</code></td><td>Warp group (4 warps = 128 threads)</td><td>Hopper warpgroup MMA pipelining: fence registers, commit issued WGMMAs into a group, then wait until all but N groups complete.</td></tr>
                 <tr><td><code>mbarrier.init</code></td><td>Block</td><td>Set up an mbarrier with a thread arrival count.</td></tr>
                 <tr><td><code>mbarrier.arrive</code></td><td>Block</td><td>Drop a token into the mbarrier; non-blocking.</td></tr>
                 <tr><td><code>mbarrier.try_wait</code></td><td>Block</td><td>Block until barrier phase completes (or timeout).</td></tr>
@@ -1196,7 +1196,7 @@
     <div class="diagram-grid cols-2">
         <div class="diagram-panel accent-border">
             <h4>The producer/consumer pipeline</h4>
-            <p>Hopper's TMA + WGMMA design needs <em>asynchronous</em> producers and consumers. <code>mbarrier</code> + <code>bar.warpgroup.arrive</code> let one warp group load tiles via TMA into shared memory while another warp group runs WGMMA on the previous tile &mdash; the canonical ping-pong used by CUTLASS Hopper kernels.</p>
+            <p>Hopper's TMA + WGMMA design needs <em>asynchronous</em> producers and consumers. <code>mbarrier</code> primitives + <code>wgmma.commit_group</code>/<code>wgmma.wait_group</code> let one warp group load tiles via TMA into shared memory while another warp group runs WGMMA on the previous tile &mdash; the canonical ping-pong used by CUTLASS Hopper kernels.</p>
         </div>
         <div class="diagram-panel accent-border">
             <h4>Fences vs barriers</h4>
@@ -1233,7 +1233,7 @@
     <div class="diagram-grid cols-2">
         <div class="diagram-panel accent-border">
             <h4>Predicate registers</h4>
-            <p>PTX has 7 architectural predicate regs (<code>%p0</code>..<code>%p6</code>); SASS exposes <code>P0</code>..<code>P6</code> plus the always-true <code>PT</code>. Comparison ops (<code>setp</code>, <code>ISETP</code>) write predicates; almost every other op can be guarded by one.</p>
+            <p>PTX exposes virtual <code>.pred</code> registers (declared by the kernel, e.g. <code>%p0</code>..); after register allocation, SASS uses the 7 architectural predicate regs <code>P0</code>..<code>P6</code> plus the hard-wired-true <code>PT</code>. Comparison ops (<code>setp</code>, <code>ISETP</code>) write predicates; almost every other op can be guarded by one.</p>
         </div>
         <div class="diagram-panel accent-border">
             <h4>Predicated form</h4>
@@ -1318,9 +1318,9 @@
             <ul>
                 <li><code>S2R</code> &mdash; "special to register": reads built-ins like <code>SR_CTAID.X</code>.</li>
                 <li><code>IMAD.WIDE</code> &mdash; one fused 64-bit multiply-add for index-to-pointer arithmetic.</li>
-                <li><code>LDG.E</code> &mdash; load global, generic-address; the <code>+0x800000</code> is a relative offset from the same base.</li>
+                <li><code>LDG.E</code> &mdash; load global with extended (64-bit) addressing; the <code>+0x800000</code> is a relative offset from the same base.</li>
                 <li><code>FADD</code> &mdash; FP32 add.</li>
-                <li><code>STG.E</code> &mdash; store global, generic-address.</li>
+                <li><code>STG.E</code> &mdash; store global with extended (64-bit) addressing.</li>
                 <li><code>@PT EXIT</code> &mdash; unconditional kernel exit.</li>
             </ul>
         </div>
@@ -1386,16 +1386,18 @@
 
     <div class="code-block">
         <div class="code-header">PTX (nvcc -ptx, sm_80 target)</div>
-<pre><code>    <span class="kw">wmma.load.a.sync.aligned.m16n16k16.row.shared.f16</span>
-        {%a0, %a1, %a2, %a3, %a4, %a5, %a6, %a7}, [smem_a], 16;
+<pre><code>    <span class="cm">// f16 a/b fragments are 4 x .b32 (= 8 fp16 elements per thread, packed half2)</span>
+    <span class="kw">wmma.load.a.sync.aligned.m16n16k16.row.shared.f16</span>
+        {%a0, %a1, %a2, %a3}, [smem_a], 16;
 
     <span class="kw">wmma.load.b.sync.aligned.m16n16k16.col.shared.f16</span>
-        {%b0, %b1, %b2, %b3, %b4, %b5, %b6, %b7}, [smem_b], 16;
+        {%b0, %b1, %b2, %b3}, [smem_b], 16;
 
+    <span class="cm">// f32 accumulator fragment is 8 x .f32 per thread</span>
     <span class="kw">wmma.mma.sync.aligned.row.col.m16n16k16.f32.f16.f16.f32</span>
         {%c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7},
-        {%a0, %a1, %a2, %a3, %a4, %a5, %a6, %a7},
-        {%b0, %b1, %b2, %b3, %b4, %b5, %b6, %b7},
+        {%a0, %a1, %a2, %a3},
+        {%b0, %b1, %b2, %b3},
         {%c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7};
 
     <span class="kw">wmma.store.d.sync.aligned.m16n16k16.row.global.f32</span>
@@ -1608,7 +1610,7 @@
             throughput: "1 / cyc / scheduler", predicable: "Y", writesReg: "Y", writesPred: "N",
             ptx: "ld.shared.{type}",
             emittedFor: "Reading the on-chip scratchpad in matmul, reductions, FFT staging.",
-            note: "Bank conflicts = serialised access. Hopper added 32-way banks; older arches have 32 banks each 4 B wide."
+            note: "Bank conflicts = serialised access. Shared memory is organised as 32 banks, each 4 B wide (since Kepler); accessing the same bank from different lanes serialises."
         },
         "STS": {
             family: "Memory (shared store)", operands: "[Rd+offset], Ra", latency: "~25 cyc",
